@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aquapark-v1';
+const CACHE_NAME = 'aquapark-v2';
 const ASSETS = [
     './',
     './index.html',
