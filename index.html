@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#00bcd4">
+    <meta name="description" content="Aqua Park - Water slide racing game">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Aqua Park">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <title>Aqua Park</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <div class="water-loader">
+                <div class="wave"></div>
+            </div>
+            <h1>AQUA PARK</h1>
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- Main Menu -->
+    <div id="main-menu" class="screen hidden">
+        <div class="menu-bg"></div>
+        <div class="menu-content">
+            <h1 class="game-title">AQUA PARK</h1>
+            <div class="menu-stats">
+                <div class="stat-item">
+                    <span class="stat-icon">🏆</span>
+                    <span id="menu-wins" class="stat-value">0</span>
+                    <span class="stat-label">Wins</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">⭐</span>
+                    <span id="menu-coins" class="stat-value">0</span>
+                    <span class="stat-label">Coins</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🎮</span>
+                    <span id="menu-level" class="stat-value">1</span>
+                    <span class="stat-label">Level</span>
+                </div>
+            </div>
+            <button id="play-btn" class="menu-btn primary-btn">PLAY</button>
+            <button id="select-level-btn" class="menu-btn">SELECT LEVEL</button>
+            <button id="customize-btn" class="menu-btn">CUSTOMIZE</button>
+            <button id="install-btn" class="menu-btn install-btn hidden">INSTALL APP</button>
+        </div>
+    </div>
+
+    <!-- Level Select -->
+    <div id="level-select" class="screen hidden">
+        <div class="screen-header">
+            <button id="level-back-btn" class="back-btn">&#8592;</button>
+            <h2>SELECT LEVEL</h2>
+        </div>
+        <div id="level-grid" class="level-grid"></div>
+    </div>
+
+    <!-- Customization Screen -->
+    <div id="customize-screen" class="screen hidden">
+        <div class="screen-header">
+            <button id="customize-back-btn" class="back-btn">&#8592;</button>
+            <h2>CUSTOMIZE</h2>
+            <div class="coin-display">⭐ <span id="customize-coins">0</span></div>
+        </div>
+        <div class="customize-preview" id="customize-preview"></div>
+        <div id="skin-grid" class="skin-grid"></div>
+    </div>
+
+    <!-- Game Canvas Container -->
+    <div id="game-container" class="hidden">
+        <canvas id="game-canvas"></canvas>
+        <!-- Game HUD -->
+        <div id="game-hud">
+            <div class="hud-top">
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                    <div id="progress-marker" class="progress-marker"></div>
+                    <div id="progress-end" class="progress-end">🏁</div>
+                </div>
+                <div class="hud-center">
+                    <div id="position-display" class="position-display">1st</div>
+                </div>
+                <div class="hud-stats">
+                    <div id="skull-count" class="skull-count">💀 x0</div>
+                    <div id="coin-count" class="coin-count">⭐ x0</div>
+                </div>
+            </div>
+            <div id="powerup-indicator" class="powerup-indicator hidden"></div>
+        </div>
+        <!-- Touch Controls -->
+        <div id="touch-controls">
+            <div id="touch-left" class="touch-zone"></div>
+            <div id="touch-right" class="touch-zone"></div>
+        </div>
+        <!-- Countdown -->
+        <div id="countdown" class="countdown hidden">
+            <span id="countdown-text">3</span>
+        </div>
+        <!-- Tap to Start -->
+        <div id="tap-to-start" class="tap-to-start hidden">
+            <p>TAP TO START</p>
+        </div>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="results-screen" class="screen hidden">
+        <div class="results-content">
+            <h1 id="results-title">RESULTS</h1>
+            <div id="results-position" class="results-position"></div>
+            <div class="results-stats">
+                <div class="result-stat">
+                    <span class="result-label">Coins</span>
+                    <span id="result-coins" class="result-value">0</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-label">Eliminations</span>
+                    <span id="result-eliminations" class="result-value">0</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-label">Time</span>
+                    <span id="result-time" class="result-value">0:00</span>
+                </div>
+            </div>
+            <div class="results-rewards">
+                <span>+</span><span id="reward-coins">0</span> ⭐
+            </div>
+            <button id="next-level-btn" class="menu-btn primary-btn">NEXT LEVEL</button>
+            <button id="retry-btn" class="menu-btn">RETRY</button>
+            <button id="results-menu-btn" class="menu-btn">MENU</button>
+        </div>
+    </div>
+
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/game.js"></script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
