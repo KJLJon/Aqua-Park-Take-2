@@ -321,25 +321,18 @@
         renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.enabled = false;
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight.position.set(10, 20, 10);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 100;
-        dirLight.shadow.camera.left = -30;
-        dirLight.shadow.camera.right = 30;
-        dirLight.shadow.camera.top = 30;
-        dirLight.shadow.camera.bottom = -30;
         scene.add(dirLight);
+
+        const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x0077b6, 0.4);
+        scene.add(hemiLight);
 
         // Water plane
         const waterGeo = new THREE.PlaneGeometry(500, 500);
@@ -364,23 +357,38 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
+    function disposeMesh(m) {
+        scene.remove(m);
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+            if (Array.isArray(m.material)) m.material.forEach(mt => mt.dispose());
+            else m.material.dispose();
+        }
+        // Dispose children for groups
+        if (m.children) {
+            m.children.forEach(c => {
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) c.material.dispose();
+            });
+        }
+    }
+
     function clearScene() {
-        // Remove all game objects from scene
-        slideMeshes.forEach(m => scene.remove(m));
+        slideMeshes.forEach(disposeMesh);
         slideMeshes = [];
-        coinMeshes.forEach(m => scene.remove(m));
+        coinMeshes.forEach(disposeMesh);
         coinMeshes = [];
-        obstacleMeshes.forEach(m => scene.remove(m));
+        obstacleMeshes.forEach(disposeMesh);
         obstacleMeshes = [];
-        powerupMeshes.forEach(m => scene.remove(m));
+        powerupMeshes.forEach(disposeMesh);
         powerupMeshes = [];
-        rampMeshes.forEach(m => scene.remove(m));
+        rampMeshes.forEach(disposeMesh);
         rampMeshes = [];
-        racerMeshes.forEach(m => scene.remove(m));
+        racerMeshes.forEach(disposeMesh);
         racerMeshes = [];
         splashParticles.forEach(p => scene.remove(p));
         splashParticles = [];
-        if (finishLine) { scene.remove(finishLine); finishLine = null; }
+        if (finishLine) { disposeMesh(finishLine); finishLine = null; }
     }
 
     // ============================================================
@@ -388,79 +396,55 @@
     // ============================================================
     function buildSlideMesh(slideData) {
         const { path } = slideData;
+        const crossSteps = 6;
+        const wallHeight = 1.2;
 
-        // Build slide as a series of connected segments
-        const slideGroup = new THREE.Group();
+        // Batch all slide surface verts/indices into single geometries
+        const slideVerts = [];
+        const slideColors = [];
+        const slideIndices = [];
+        const wallVerts = [];
+        const wallIndices = [];
+        let slideVertCount = 0;
+        let wallVertCount = 0;
 
-        // Create slide surface using extruded geometry segments
         for (let i = 0; i < path.length - 1; i++) {
             const p0 = path[i];
             const p1 = path[i + 1];
             const halfW = p0.width / 2;
-
-            // Calculate perpendicular (left/right) direction
             const perpX = -p0.dirZ;
             const perpZ = p0.dirX;
-
             const perpX1 = -p1.dirZ;
             const perpZ1 = p1.dirX;
 
-            // Create a curved U-shape cross section for the slide
-            const vertices = [];
-            const indices = [];
-
-            const steps = 6; // cross-section resolution
-            for (let s = 0; s <= steps; s++) {
-                const t = s / steps;
-                const angle = Math.PI * t; // 0 to PI (U shape)
-                const cx = Math.cos(angle) * halfW;
-                const cy = -Math.sin(angle) * 0.8; // depth of the U
-
-                // Start point
-                const sx = p0.x + perpX * cx;
-                const sy = p0.y + cy;
-                const sz = p0.z + perpZ * cx;
-
-                // End point
-                const ex = p1.x + perpX1 * cx;
-                const ey = p1.y + cy;
-                const ez = p1.z + perpZ1 * cx;
-
-                vertices.push(sx, sy, sz);
-                vertices.push(ex, ey, ez);
-            }
-
-            // Build faces
-            for (let s = 0; s < steps; s++) {
-                const a = s * 2;
-                const b = s * 2 + 1;
-                const c = s * 2 + 2;
-                const d = s * 2 + 3;
-                indices.push(a, b, c);
-                indices.push(b, d, c);
-            }
-
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geo.setIndex(indices);
-            geo.computeVertexNormals();
-
-            // Alternate colors for visual stripes
+            // Stripe color
             const isStripe = Math.floor(i / 3) % 2 === 0;
-            const mat = new THREE.MeshPhongMaterial({
-                color: isStripe ? 0xffffff : 0xd0e8f0,
-                side: THREE.DoubleSide,
-                shininess: 80,
-            });
+            const cr = isStripe ? 1.0 : 0.816;
+            const cg = isStripe ? 1.0 : 0.91;
+            const cb = isStripe ? 1.0 : 0.94;
 
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.receiveShadow = true;
-            slideGroup.add(mesh);
+            const baseVert = slideVertCount;
+            for (let s = 0; s <= crossSteps; s++) {
+                const t = s / crossSteps;
+                const angle = Math.PI * t;
+                const cx = Math.cos(angle) * halfW;
+                const cy = -Math.sin(angle) * 0.8;
 
-            // Add side walls/rails
-            const wallHeight = 1.2;
+                slideVerts.push(p0.x + perpX * cx, p0.y + cy, p0.z + perpZ * cx);
+                slideVerts.push(p1.x + perpX1 * cx, p1.y + cy, p1.z + perpZ1 * cx);
+                slideColors.push(cr, cg, cb, cr, cg, cb);
+            }
+            for (let s = 0; s < crossSteps; s++) {
+                const a = baseVert + s * 2;
+                const b = a + 1;
+                const c = a + 2;
+                const d = a + 3;
+                slideIndices.push(a, b, c, b, d, c);
+            }
+            slideVertCount += (crossSteps + 1) * 2;
+
+            // Walls (batched)
             for (const side of [-1, 1]) {
-                const wallVerts = [];
                 const wx0 = p0.x + perpX * halfW * side;
                 const wy0 = p0.y;
                 const wz0 = p0.z + perpZ * halfW * side;
@@ -468,29 +452,42 @@
                 const wy1 = p1.y;
                 const wz1 = p1.z + perpZ1 * halfW * side;
 
-                wallVerts.push(wx0, wy0, wz0);
-                wallVerts.push(wx1, wy1, wz1);
-                wallVerts.push(wx0, wy0 + wallHeight, wz0);
-                wallVerts.push(wx1, wy1 + wallHeight, wz1);
-
-                const wallGeo = new THREE.BufferGeometry();
-                wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
-                wallGeo.setIndex([0, 1, 2, 1, 3, 2]);
-                wallGeo.computeVertexNormals();
-
-                const wallMat = new THREE.MeshPhongMaterial({
-                    color: 0x0099dd,
-                    transparent: true,
-                    opacity: 0.4,
-                    side: THREE.DoubleSide,
-                });
-                const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-                slideGroup.add(wallMesh);
+                const wb = wallVertCount;
+                wallVerts.push(wx0, wy0, wz0, wx1, wy1, wz1, wx0, wy0 + wallHeight, wz0, wx1, wy1 + wallHeight, wz1);
+                wallIndices.push(wb, wb+1, wb+2, wb+1, wb+3, wb+2);
+                wallVertCount += 4;
             }
         }
 
-        scene.add(slideGroup);
-        slideMeshes.push(slideGroup);
+        // Build single slide mesh
+        const slideGeo = new THREE.BufferGeometry();
+        slideGeo.setAttribute('position', new THREE.Float32BufferAttribute(slideVerts, 3));
+        slideGeo.setAttribute('color', new THREE.Float32BufferAttribute(slideColors, 3));
+        slideGeo.setIndex(slideIndices);
+        slideGeo.computeVertexNormals();
+        const slideMat = new THREE.MeshPhongMaterial({
+            vertexColors: true,
+            side: THREE.DoubleSide,
+            shininess: 80,
+        });
+        const slideMesh = new THREE.Mesh(slideGeo, slideMat);
+        scene.add(slideMesh);
+        slideMeshes.push(slideMesh);
+
+        // Build single wall mesh
+        const wallGeo = new THREE.BufferGeometry();
+        wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
+        wallGeo.setIndex(wallIndices);
+        wallGeo.computeVertexNormals();
+        const wallMat = new THREE.MeshPhongMaterial({
+            color: 0x0099dd,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide,
+        });
+        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        scene.add(wallMesh);
+        slideMeshes.push(wallMesh);
 
         // Add finish area (pool)
         const lastSeg = path[path.length - 1];
@@ -502,7 +499,6 @@
         });
         const pool = new THREE.Mesh(poolGeo, poolMat);
         pool.position.set(lastSeg.x, lastSeg.y - 0.5, lastSeg.z - 5);
-        pool.receiveShadow = true;
         scene.add(pool);
         slideMeshes.push(pool);
 
@@ -526,7 +522,6 @@
             const mesh = new THREE.Mesh(geo, mat);
             mesh.rotation.x = Math.PI / 2;
             mesh.position.set(coin.x, coin.y, coin.z);
-            mesh.castShadow = true;
             mesh.userData = { type: 'coin', index: idx };
             scene.add(mesh);
             coinMeshes.push(mesh);
@@ -545,7 +540,6 @@
                 mesh = new THREE.Mesh(geo, mat);
             }
             mesh.position.set(obs.x, obs.y, obs.z);
-            mesh.castShadow = true;
             mesh.userData = { type: 'obstacle', index: idx };
             scene.add(mesh);
             obstacleMeshes.push(mesh);
@@ -562,7 +556,6 @@
             });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(pu.x, pu.y, pu.z);
-            mesh.castShadow = true;
             mesh.userData = { type: 'powerup', index: idx, puType: pu.type };
             scene.add(mesh);
             powerupMeshes.push(mesh);
@@ -576,7 +569,6 @@
             mesh.position.set(ramp.x, ramp.y + 0.1, ramp.z);
             // Angle the ramp upward
             mesh.rotation.x = -0.3;
-            mesh.castShadow = true;
             mesh.userData = { type: 'ramp', index: idx };
             scene.add(mesh);
             rampMeshes.push(mesh);
@@ -590,11 +582,10 @@
         const group = new THREE.Group();
 
         // Body (sitting position on tube)
-        const bodyGeo = new THREE.CapsuleGeometry(0.3, 0.4, 4, 8);
+        const bodyGeo = new THREE.CylinderGeometry(0.25, 0.3, 0.6, 8);
         const bodyMat = new THREE.MeshPhongMaterial({ color });
         const body = new THREE.Mesh(bodyGeo, bodyMat);
         body.position.y = 0.5;
-        body.castShadow = true;
         group.add(body);
 
         // Head
@@ -602,7 +593,6 @@
         const headMat = new THREE.MeshPhongMaterial({ color: 0xffcc88 });
         const head = new THREE.Mesh(headGeo, headMat);
         head.position.y = 1.0;
-        head.castShadow = true;
         group.add(head);
 
         // Tube/float
@@ -611,7 +601,6 @@
         const tube = new THREE.Mesh(tubeGeo, tubeMat);
         tube.rotation.x = Math.PI / 2;
         tube.position.y = 0.15;
-        tube.castShadow = true;
         group.add(tube);
 
         // Position label
@@ -639,7 +628,18 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.beginPath();
-        ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 10);
+        // roundRect polyfill for older browsers
+        const rx = 4, ry = 4, rw = canvas.width - 8, rh = canvas.height - 8, rad = 10;
+        ctx.moveTo(rx + rad, ry);
+        ctx.lineTo(rx + rw - rad, ry);
+        ctx.arcTo(rx + rw, ry, rx + rw, ry + rad, rad);
+        ctx.lineTo(rx + rw, ry + rh - rad);
+        ctx.arcTo(rx + rw, ry + rh, rx + rw - rad, ry + rh, rad);
+        ctx.lineTo(rx + rad, ry + rh);
+        ctx.arcTo(rx, ry + rh, rx, ry + rh - rad, rad);
+        ctx.lineTo(rx, ry + rad);
+        ctx.arcTo(rx, ry, rx + rad, ry, rad);
+        ctx.closePath();
         ctx.fill();
         ctx.fillStyle = color || '#fff';
         ctx.font = 'bold 28px Arial';
